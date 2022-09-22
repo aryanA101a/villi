@@ -9,7 +9,7 @@ import (
 	"github.com/jackpal/bencode-go"
 )
 
-//Por used for Bit-Torrent
+//Port used for Bit-Torrent
 const Port uint16=6881
 
 type TorrentFile struct{
@@ -77,10 +77,12 @@ func (i *bencodeInfo) splitPiecesHashes()([][20]byte,error){
 }
 
 func (bto *bencodeTorrent) toTorrentFile()(TorrentFile,error){
+	//sha1 hash of info dict in .torrent file
 	infoHash,err:=bto.Info.hash()
 	if err!=nil{
 		return TorrentFile{},err
 	}
+	//a slice containing sha1 hash of each piece
 	pieceHashes,err:=bto.Info.splitPiecesHashes()
 	if err!=nil{
 		return TorrentFile{}, err
