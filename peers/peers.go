@@ -1,4 +1,4 @@
-package torrentfile
+package peers
 
 import (
 	"encoding/binary"
