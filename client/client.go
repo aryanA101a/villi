@@ -118,3 +118,9 @@ func (c *Client) SendUnchoke() error {
 	_, err := c.Conn.Write(msg.Serialize())
 	return err
 }
+
+func (c *Client) SendHave(index int) error {
+	msg := message.FormatHave(index)
+	_, err := c.Conn.Write(msg.Serialize())
+	return err
+}
