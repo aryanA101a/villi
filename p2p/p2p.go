@@ -91,17 +91,17 @@ func attemptDownloadPiece(c *client.Client, pw *pieceWork) ([]byte, error) {
 	for state.downloaded < pw.length {
 		if !state.client.Choked {
 			for state.backlog < MaxBacklog && state.requested < pw.length {
-				blocksize := MaxBlockSize
-				if pw.length-state.requested < blocksize {
-					blocksize = pw.length - state.requested
+				blockSize := MaxBlockSize
+				if pw.length-state.requested < blockSize {
+					blockSize = pw.length - state.requested
 				}
 
-				err := c.SendRequest(pw.index, state.requested, blocksize)
+				err := c.SendRequest(pw.index, state.requested, blockSize)
 				if err != nil {
 					return nil, err
 				}
 				state.backlog++
-				state.requested += blocksize
+				state.requested += blockSize
 
 			}
 		}
@@ -125,7 +125,8 @@ func checkIntegrity(pw *pieceWork, buf []byte) error {
 func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult) {
 	c, err := client.New(peer, t.PeerID, t.InfoHash)
 	if err != nil {
-		log.Printf("Could not handshake with %s. Disconnecting\n", peer.IP)
+		log.Println(err.Error())
+		log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
 		return
 	}
 	defer c.Conn.Close()

@@ -28,11 +28,14 @@ func completeHandshake(conn net.Conn, infohash, peerID [20]byte) (*handshake.Han
 	req := handshake.New(infohash, peerID)
 	_, err := conn.Write(req.Serialize())
 	if err != nil {
+		fmt.Println(1)
 		return nil, err
 	}
 
 	res, err := handshake.Read(conn)
 	if err != nil {
+		fmt.Println(2)
+
 		return nil, err
 	}
 	if !bytes.Equal(res.InfoHash[:], infohash[:]) {
@@ -60,6 +63,7 @@ func recvBitfield(conn net.Conn) (bitfield.Bitfield, error) {
 func New(peer peers.Peer, peerID, infoHash [20]byte) (*Client, error) {
 	conn, err := net.DialTimeout("tcp", peer.String(), 3*time.Second)
 	if err != nil {
+
 		return nil, err
 	}
 	_, err = completeHandshake(conn, infoHash, peerID)
@@ -107,11 +111,11 @@ func (c *Client) SendNotInterested() error {
 	return err
 }
 
-func (c *Client) SendChoke() error {
-	msg := message.Message{ID: message.MsgChoke}
-	_, err := c.Conn.Write(msg.Serialize())
-	return err
-}
+// func (c *Client) SendChoke() error {
+// 	msg := message.Message{ID: message.MsgChoke}
+// 	_, err := c.Conn.Write(msg.Serialize())
+// 	return err
+// }
 
 func (c *Client) SendUnchoke() error {
 	msg := message.Message{ID: message.MsgUnchoke}
