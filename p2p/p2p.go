@@ -122,11 +122,15 @@ func checkIntegrity(pw *pieceWork, buf []byte) error {
 	return nil
 }
 
-func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult) {
+func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult, timeout chan bool) {
+
 	c, err := client.New(peer, t.PeerID, t.InfoHash)
 	if err != nil {
 		log.Println(err.Error())
 		log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
+		// go func() {
+		timeout <- true
+		// }()
 		return
 	}
 	defer c.Conn.Close()
@@ -177,7 +181,7 @@ func (t *Torrent) calculatePieceSize(index int) int {
 
 func (t *Torrent) Download() ([]byte, error) {
 	log.Println("Starting download for", t.Name)
-
+	timeout := make(chan bool, 1)
 	workQuene := make(chan *pieceWork, len(t.PieceHashes))
 	results := make(chan *pieceResult)
 	for index, hash := range t.PieceHashes {
@@ -185,14 +189,31 @@ func (t *Torrent) Download() ([]byte, error) {
 		workQuene <- &pieceWork{index, hash, length}
 	}
 
+	log.Println(t.Peers)
 	for _, peer := range t.Peers {
-		go t.startDownloadWorker(peer, workQuene, results)
+		go t.startDownloadWorker(peer, workQuene, results, timeout)
 	}
 
 	buf := make([]byte, t.Length)
 	donePieces := 0
 	for donePieces < len(t.PieceHashes) {
-		res := <-results
+		log.Println("bres")
+
+		var res *pieceResult
+		select {
+		case r := <-results:
+			res = r
+		case <-timeout:
+			if (runtime.NumGoroutine() - 1) == 0 {
+				log.Println("timeout")
+				err := fmt.Errorf("cannot download")
+				return nil, err
+			}
+			continue
+		}
+		// res := <-results
+		log.Println("ares")
+
 		begin, end := t.calculateBoundsForPiece(res.index)
 		copy(buf[begin:end], res.buf)
 		donePieces++

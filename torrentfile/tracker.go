@@ -1,6 +1,12 @@
 package torrentfile
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"log"
+	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,8 +21,8 @@ type bencodeTrackerResp struct {
 	Peers    string `bencode:"peers"`
 }
 
-func (t *TorrentFile) buildTrackerURL(peerID [20]byte, port uint16) (string, error) {
-	base, err := url.Parse(t.Announce)
+func (t *TorrentFile) buildTrackerURL(announceURL string, peerID [20]byte, port uint16) (string, error) {
+	base, err := url.Parse(announceURL)
 	if err != nil {
 		return "", err
 	}
@@ -33,8 +39,23 @@ func (t *TorrentFile) buildTrackerURL(peerID [20]byte, port uint16) (string, err
 	return base.String(), nil
 }
 
-func (t *TorrentFile) requestPeers(peerID [20]byte, port uint16) ([]peers.Peer, error) {
-	url, err := t.buildTrackerURL(peerID, port)
+func (t *TorrentFile) requestPeers(announceURL *url.URL, peerID [20]byte, port uint16) ([]peers.Peer, error) {
+	var peers []peers.Peer
+	var err error
+
+	switch announceURL.Scheme {
+	case "http":
+		peers, err = t.requestPeersHTTP(announceURL, peerID, port)
+	case "udp":
+		peers, err = t.requestPeersUDP(announceURL, peerID, port)
+	default:
+		err = fmt.Errorf("announce url not recognized")
+	}
+	return peers, err
+}
+
+func (t *TorrentFile) requestPeersHTTP(announceURL *url.URL, peerID [20]byte, port uint16) ([]peers.Peer, error) {
+	url, err := t.buildTrackerURL(announceURL.String(), peerID, port)
 	if err != nil {
 		return nil, err
 	}
@@ -53,4 +74,296 @@ func (t *TorrentFile) requestPeers(peerID [20]byte, port uint16) ([]peers.Peer, 
 	}
 
 	return peers.Unmarshal([]byte(trackerResp.Peers))
+}
+
+func (t *TorrentFile) requestPeersUDP(announceURL *url.URL, peerID [20]byte, port uint16) ([]peers.Peer, error) {
+	serverAddr, err := net.ResolveUDPAddr("udp", announceURL.Host)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.DialUDP("udp", nil, serverAddr)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	var connID uint64
+	for retry := uint(0); retry < uint(8); retry++ {
+		err = conn.SetDeadline(time.Now().Add(15 * (1 << retry) * time.Second))
+		if err != nil {
+			return nil, err
+		}
+
+		connID, err = connectReqUDP(conn)
+		log.Println("faxxx")
+		if err != nil {
+			return nil, err
+		}
+
+		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+			continue
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+	}
+	log.Println("faxxx2")
+
+	peers, err := announceReqUDP(conn, connID, peerID, port, *t)
+	if err != nil {
+		return nil, err
+	}
+	log.Println("faxxx3")
+
+	return peers, nil
+
+}
+
+func connectReqUDP(conn *net.UDPConn) (uint64, error) {
+
+	/*
+		connect request:
+			Offset  Size            Name            Value
+			0       64-bit integer  protocol_id     0x41727101980 // magic constant
+			8       32-bit integer  action          0 // connect
+			12      32-bit integer  transaction_id
+			16
+
+		connect response:
+			Offset  Size            Name            Value
+			0       32-bit integer  action          0 // connect
+			4       32-bit integer  transaction_id
+			8       64-bit integer  connection_id
+			16
+
+	*/
+
+	connectPacket, err := buildConnectPacket()
+	if err != nil {
+		return 0, err
+	}
+
+	transactionID := binary.BigEndian.Uint32(connectPacket[12:])
+
+	_, err = conn.Write(connectPacket)
+	if err != nil {
+		return 0, err
+	}
+
+	respBytes := make([]byte, 16)
+	var respLen int
+	respLen, err = conn.Read(respBytes)
+	if err != nil {
+		return 0, err
+	}
+
+	if respLen != 16 {
+		err = fmt.Errorf("unexpected response size %d", respLen)
+		return 0, err
+	}
+
+	if binary.BigEndian.Uint32(respBytes[0:4]) != 0 {
+		err = fmt.Errorf("unexpected connect response action")
+		return 0, err
+	}
+
+	if transactionID != binary.BigEndian.Uint32(respBytes[4:8]) {
+		err = fmt.Errorf("TransactionID does not match")
+		return 0, err
+	}
+
+	connectID := binary.BigEndian.Uint64(respBytes[8:])
+	return connectID, nil
+}
+
+func buildConnectPacket() ([]byte, error) {
+	packet := make([]byte, 16)
+	transactionID := make([]byte, 4)
+	_, err := rand.Read(transactionID)
+	if err != nil {
+		return nil, err
+	}
+
+	binary.BigEndian.PutUint64(packet[:8], uint64(0x41727101980))
+	binary.BigEndian.PutUint32(packet[8:12], uint32(0))
+	binary.BigEndian.PutUint32(packet[12:], binary.BigEndian.Uint32(transactionID[:]))
+
+	return packet, err
+}
+
+func announceReqUDP(conn *net.UDPConn, connectID uint64, peerID [20]byte, port uint16, t TorrentFile) ([]peers.Peer, error) {
+	/*
+		IPv4 announce request:
+			Offset  Size    Name    Value
+			0       64-bit integer  connection_id
+			8       32-bit integer  action          1 // announce
+			12      32-bit integer  transaction_id
+			16      20-byte string  info_hash
+			36      20-byte string  peer_id
+			56      64-bit integer  downloaded
+			64      64-bit integer  left
+			72      64-bit integer  uploaded
+			80      32-bit integer  event           0 // 0: none; 1: completed; 2: started; 3: stopped
+			84      32-bit integer  IP address      0 // default
+			88      32-bit integer  key
+			92      32-bit integer  num_want        -1 // default
+			96      16-bit integer  port
+			98
+
+		IPv4 announce response:
+			Offset      Size            Name            Value
+			0           32-bit integer  action          1 // announce
+			4           32-bit integer  transaction_id
+			8           32-bit integer  interval
+			12          32-bit integer  leechers
+			16          32-bit integer  seeders
+			20 + 6 * n  32-bit integer  IP address
+			24 + 6 * n  16-bit integer  TCP port
+			20 + 6 * N
+	*/
+
+	announcePacket, err := buildAnnouncePacket(connectID, peerID, port, t)
+	if err != nil {
+		return nil, err
+	}
+	transactionID := announcePacket[12:16]
+	_, err = conn.Write(announcePacket)
+	if err != nil {
+		return nil, err
+	}
+	log.Println("faxxx4")
+
+	respBuffer := new(bytes.Buffer)
+	var respLen int
+	respBytes := make([]byte, 4096)
+	respLen, err = conn.Read(respBytes)
+	// log.Println(respBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(respBuffer, binary.BigEndian, respBytes[:respLen])
+	if err != nil {
+		return nil, err
+	}
+
+	if respLen < 20 {
+		err = fmt.Errorf("unexpected response size")
+		return nil, err
+	}
+
+	if binary.BigEndian.Uint32(transactionID[:]) != binary.BigEndian.Uint32(respBuffer.Bytes()[4:8]) {
+		err = fmt.Errorf("transaction id not matching")
+		return nil, err
+	}
+
+	action := binary.BigEndian.Uint32(respBuffer.Bytes()[0:4])
+	if action != 1 {
+		if action == 3 {
+			err = fmt.Errorf("%d:unexpected announce response action | message:%s", action, string(respBuffer.Bytes()[8:]))
+		} else {
+			err = fmt.Errorf("%d:unexpected announce response action", action)
+
+		}
+		return nil, err
+	}
+
+	peerList, err := peers.Unmarshal(respBuffer.Bytes()[20:])
+	if err != nil {
+		return nil, err
+	}
+
+	return peerList, nil
+}
+
+func buildAnnouncePacket(connID uint64, peerID [20]byte, port uint16, t TorrentFile) ([]byte, error) {
+	announcePacket := new(bytes.Buffer)
+
+	transactionID := make([]byte, 4)
+	_, err := rand.Read(transactionID[:])
+	if err != nil {
+		return nil, err
+	}
+
+	//connection id
+	err = binary.Write(announcePacket, binary.BigEndian, connID)
+	if err != nil {
+		return nil, err
+	}
+
+	//action
+	err = binary.Write(announcePacket, binary.BigEndian, uint32(1))
+	if err != nil {
+		return nil, err
+	}
+
+	//transaction id
+	err = binary.Write(announcePacket, binary.BigEndian, transactionID)
+	if err != nil {
+		return nil, err
+	}
+
+	//infohash
+	err = binary.Write(announcePacket, binary.BigEndian, t.InfoHash)
+	if err != nil {
+		return nil, err
+	}
+
+	//peer id
+	err = binary.Write(announcePacket, binary.BigEndian, peerID)
+	if err != nil {
+		return nil, err
+	}
+
+	//downloaded
+	err = binary.Write(announcePacket, binary.BigEndian, uint64(0))
+	if err != nil {
+		return nil, err
+	}
+
+	//left
+	err = binary.Write(announcePacket, binary.BigEndian, uint64(t.Length))
+	if err != nil {
+		return nil, err
+	}
+
+	//uploaded
+	err = binary.Write(announcePacket, binary.BigEndian, uint64(0))
+	if err != nil {
+		return nil, err
+	}
+
+	//event
+	err = binary.Write(announcePacket, binary.BigEndian, uint32(0))
+	if err != nil {
+		return nil, err
+	}
+
+	//ip address
+	err = binary.Write(announcePacket, binary.BigEndian, uint32(0))
+	if err != nil {
+		return nil, err
+	}
+
+	//key
+	err = binary.Write(announcePacket, binary.BigEndian, uint32(0))
+	if err != nil {
+		return nil, err
+	}
+
+	//num want
+	err = binary.Write(announcePacket, binary.BigEndian, int32(-1))
+	if err != nil {
+		return nil, err
+	}
+
+	//port
+	err = binary.Write(announcePacket, binary.BigEndian, port)
+	if err != nil {
+		return nil, err
+	}
+
+	return announcePacket.Bytes(), nil
 }

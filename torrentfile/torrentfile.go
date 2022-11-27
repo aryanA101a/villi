@@ -5,9 +5,12 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"fmt"
+	"log"
+	"net/url"
 	"os"
 
 	"github.com/aryanA101a/villi/p2p"
+	"github.com/aryanA101a/villi/peers"
 	"github.com/jackpal/bencode-go"
 )
 
@@ -15,7 +18,7 @@ import (
 const Port uint16 = 6881
 
 type TorrentFile struct {
-	Announce    string
+	Announce    []string
 	InfoHash    [20]byte
 	PieceHashes [][20]byte
 	PieceLength int
@@ -31,8 +34,9 @@ type bencodeInfo struct {
 }
 
 type bencodeTorrent struct {
-	Announce string      `bencode:"announce"`
-	Info     bencodeInfo `bencode:"info"`
+	Announce     string      `bencode:"announce"`
+	AnnounceList [][]string  `bencode:"announce-list"`
+	Info         bencodeInfo `bencode:"info"`
 }
 
 func (t *TorrentFile) DownloadToFile(path string) error {
@@ -42,10 +46,33 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 		return nil
 	}
 
-	peers, err := t.requestPeers(peerID, Port)
-	if err != nil {
-		return err
+	var peers []peers.Peer
+	for _, announceURL := range t.Announce {
+		u, err := url.Parse(announceURL)
+		if err != nil {
+			continue
+		}
+		log.Println("Contacting tracker[", announceURL, "] for peer list...")
+
+		peers, err = t.requestPeers(u, peerID, Port)
+		if err == nil {
+			log.Println("break")
+			break
+		}
+		log.Println("Failed(", err, "). Trying again...")
+
 	}
+
+	if peers == nil {
+		// panic("Unable to receive peers! Problem with the torrent or internet")
+		
+		return err
+
+	}
+	// := t.requestPeers(peerID, Port)
+	// if err != nil {
+		// return err
+	// }
 
 	torrent := p2p.Torrent{
 		Peers:       peers,
@@ -125,8 +152,21 @@ func (bto *bencodeTorrent) toTorrentFile() (TorrentFile, error) {
 	if err != nil {
 		return TorrentFile{}, err
 	}
+
+	//parse tracker urls
+	var announceList []string
+	if len(bto.AnnounceList) > 0 {
+		for _, tier := range bto.AnnounceList {
+			for _, announce := range tier {
+				announceList = append(announceList, announce)
+			}
+		}
+	} else {
+		announceList = append(announceList, bto.Announce)
+	}
+
 	t := TorrentFile{
-		Announce:    bto.Announce,
+		Announce:    announceList,
 		InfoHash:    infoHash,
 		PieceHashes: pieceHashes,
 		PieceLength: bto.Info.PieceLength,
