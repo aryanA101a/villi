@@ -194,7 +194,7 @@ func (t *Torrent) Download() ([]byte, error) {
 		go t.startDownloadWorker(peer, workQuene, results)
 	}
 
-	buf := make([]byte, t.Length)//length sahi karno hai
+	buf := make([]byte, t.Length)
 	donePieces := 0
 	for donePieces < len(t.PieceHashes) {
 		log.Println("bres")

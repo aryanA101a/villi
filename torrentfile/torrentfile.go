@@ -17,7 +17,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-//Port used for Bit-Torrent
+// Port used for Bit-Torrent
 const Port uint16 = 6881
 
 type TorrentFile struct {
@@ -32,7 +32,7 @@ type TorrentFile struct {
 
 type bencodeInfo struct {
 	Pieces      string             `bencode:"pieces"`
-	PieceLength uint                `bencode:"piece length"`
+	PieceLength uint               `bencode:"piece length"`
 	Length      uint64             `bencode:"length"`
 	Name        string             `bencode:"name"`
 	Files       bencode.RawMessage `bencode:"files"`
@@ -142,9 +142,10 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 
 }
 
-func Open(path string) (TorrentFile, error) {
-	file, err := os.Open(path)
+func Open(inPath string,outPath string) (TorrentFile, error) {
+	file, err := os.Open(inPath)
 	if err != nil {
+
 		return TorrentFile{}, err
 	}
 	defer file.Close()
@@ -160,7 +161,7 @@ func Open(path string) (TorrentFile, error) {
 		return TorrentFile{}, err
 	}
 
-	return bto.toTorrentFile(path)
+	return bto.toTorrentFile(outPath)
 }
 
 // func (i *bencodeInfo) hash() ([20]byte, error) {
@@ -209,17 +210,21 @@ func (bto *bencodeTorrent) toTorrentFile(outPath string) (TorrentFile, error) {
 	}
 	var length uint64
 	files := make([]*file, 0)
-	err = os.Mkdir(bencodeInfo.Name, os.ModePerm)
 	if err != nil {
 		return TorrentFile{}, err
 	}
+	
 	if bencodeInfo.Length > 0 {
 		var filePointer *os.File
-		name := path.Join(outPath, bencodeInfo.Name+"/"+bencodeInfo.Name)
-		filePointer, err = os.OpenFile(name, os.O_WRONLY, 0600)
+		name := path.Join(outPath, bencodeInfo.Name)
+		filePointer, err = os.Create(name)
 		if err != nil {
+		log.Println(outPath)
+
 			return TorrentFile{}, err
 		}
+		log.Println("erssrur")
+
 		files = append(files, &file{
 			Path:        name,
 			Length:      bencodeInfo.Length,
@@ -228,6 +233,11 @@ func (bto *bencodeTorrent) toTorrentFile(outPath string) (TorrentFile, error) {
 		length = bencodeInfo.Length
 
 	} else {
+		err = os.Mkdir(path.Join(outPath, bencodeInfo.Name), os.ModePerm)
+			if err != nil && os.IsNotExist(err) {
+				return TorrentFile{}, err
+			}
+
 		bencodeInfoFiles := make([]*bencodeInfoFile, 0)
 		err = bencode.DecodeBytes(bencodeInfo.Files, &bencodeInfoFiles)
 		if err != nil {
@@ -237,7 +247,7 @@ func (bto *bencodeTorrent) toTorrentFile(outPath string) (TorrentFile, error) {
 		for _, f := range bencodeInfoFiles {
 			var filePointer *os.File
 			name := path.Join(outPath, bencodeInfo.Name+"/"+f.Path[0])
-			filePointer, err = os.OpenFile(name, os.O_WRONLY, 0600)
+			filePointer, err = os.Create(name)
 			if err != nil {
 				return TorrentFile{}, err
 			}
