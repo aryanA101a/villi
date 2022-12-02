@@ -123,16 +123,18 @@ func checkIntegrity(pw *pieceWork, buf []byte) error {
 }
 
 func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult) {
+	var c *client.Client
+	
+	
+		c, err := client.New(peer, t.PeerID, t.InfoHash)
+		if err != nil {
+			log.Println(err.Error())
+			log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
+			return
 
-	c, err := client.New(peer, t.PeerID, t.InfoHash)
-	if err != nil {
-		log.Println(err.Error())
-		log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
-		// go func() {
-		// timeout <- true
-		// }()
-		return
-	}
+		}
+	
+	
 	defer c.Conn.Close()
 	log.Printf("Completed handshake with %s\n", peer.IP)
 
@@ -174,7 +176,7 @@ func (t *Torrent) calculateBoundsForPiece(index uint) (begin uint64, end uint64)
 	return begin, end
 }
 
-func (t *Torrent) calculatePieceSize(index uint) int{
+func (t *Torrent) calculatePieceSize(index uint) int {
 	begin, end := t.calculateBoundsForPiece(index)
 	return int(end - begin)
 }

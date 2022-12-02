@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"os"
 
@@ -8,10 +9,26 @@ import (
 )
 
 func main() {
-	inPath := os.Args[1]
-	outPath := os.Args[2]
+	var flag, inPath, outPath string
+	
+	switch len(os.Args) {
+	case 4:
+		flag = os.Args[3]
+		if flag == "-v" || flag == "-V" {
+			log.SetOutput(ioutil.Discard)
+		}
+		fallthrough
+	case 3:
+		inPath = os.Args[1]
+		outPath = os.Args[2]
+	default:
+		log.Println("command line args missing")
+		os.Exit(1)
+	}
 
-	tf, err := torrentfile.Open(inPath,outPath)
+	
+
+	tf, err := torrentfile.Open(inPath, outPath)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -367,7 +367,7 @@ func buildAnnouncePacket(connID uint64, peerID [20]byte, port uint16, t TorrentF
 	}
 
 	//port
-	err = binary.Write(announcePacket, binary.BigEndian, port)
+	err = binary.Write(announcePacket, binary.BigEndian, uint16(8000))
 	if err != nil {
 		return nil, err
 	}

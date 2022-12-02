@@ -9,13 +9,13 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"time"
 
 	"github.com/aryanA101a/villi/p2p"
 	"github.com/aryanA101a/villi/peers"
 	bencode "github.com/zeebo/bencode"
 	"golang.org/x/exp/maps"
 )
+const Max_Peer int=30
 
 // Port used for Bit-Torrent
 const Port uint16 = 6881
@@ -62,13 +62,13 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 	var peerList []peers.Peer
 	peerDict := make(map[string]peers.Peer)
 
-	announceList := t.Announce
-	rand.Seed(time.Now().Unix())
-	rand.Shuffle(len(announceList), func(i, j int) {
-		announceList[i], announceList[j] = announceList[j], announceList[i]
-	})
-	for _, announceURL := range announceList {
-		if len(peerDict) >= 30 {
+	// announceList := t.Announce
+	// rand.Seed(time.Now().Unix())
+	// rand.Shuffle(len(announceList), func(i, j int) {
+	// 	announceList[i], announceList[j] = announceList[j], announceList[i]
+	// })
+	for _, announceURL := range t.Announce {
+		if len(peerDict) >= Max_Peer {
 			break
 		}
 		u, err := url.Parse(announceURL)

@@ -28,13 +28,13 @@ func completeHandshake(conn net.Conn, infohash, peerID [20]byte) (*handshake.Han
 	req := handshake.New(infohash, peerID)
 	_, err := conn.Write(req.Serialize())
 	if err != nil {
-		fmt.Println(1)
+		
 		return nil, err
 	}
 
 	res, err := handshake.Read(conn)
 	if err != nil {
-		fmt.Println(2)
+		
 
 		return nil, err
 	}
