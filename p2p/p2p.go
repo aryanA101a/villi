@@ -22,8 +22,8 @@ type Torrent struct {
 	PeerID      [20]byte
 	InfoHash    [20]byte
 	PieceHashes [][20]byte
-	PieceLength int
-	Length      int
+	PieceLength uint
+	Length      uint64
 	Name        string
 }
 
@@ -122,14 +122,14 @@ func checkIntegrity(pw *pieceWork, buf []byte) error {
 	return nil
 }
 
-func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult, timeout chan bool) {
+func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult) {
 
 	c, err := client.New(peer, t.PeerID, t.InfoHash)
 	if err != nil {
 		log.Println(err.Error())
 		log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
 		// go func() {
-		timeout <- true
+		// timeout <- true
 		// }()
 		return
 	}
@@ -165,62 +165,62 @@ func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork
 
 }
 
-func (t *Torrent) calculateBoundsForPiece(index int) (begin int, end int) {
-	begin = index * t.PieceLength
-	end = begin + t.PieceLength
+func (t *Torrent) calculateBoundsForPiece(index uint) (begin uint64, end uint64) {
+	begin = uint64(index * t.PieceLength)
+	end = begin + uint64(t.PieceLength)
 	if end > t.Length {
 		end = t.Length
 	}
 	return begin, end
 }
 
-func (t *Torrent) calculatePieceSize(index int) int {
+func (t *Torrent) calculatePieceSize(index uint) int{
 	begin, end := t.calculateBoundsForPiece(index)
-	return end - begin
+	return int(end - begin)
 }
 
 func (t *Torrent) Download() ([]byte, error) {
 	log.Println("Starting download for", t.Name)
-	timeout := make(chan bool, 1)
+	// timeout := make(chan bool, 1)
 	workQuene := make(chan *pieceWork, len(t.PieceHashes))
 	results := make(chan *pieceResult)
 	for index, hash := range t.PieceHashes {
-		length := t.calculatePieceSize(index)
+		length := t.calculatePieceSize(uint(index))
 		workQuene <- &pieceWork{index, hash, length}
 	}
 
 	log.Println(t.Peers)
 	for _, peer := range t.Peers {
-		go t.startDownloadWorker(peer, workQuene, results, timeout)
+		go t.startDownloadWorker(peer, workQuene, results)
 	}
 
-	buf := make([]byte, t.Length)
+	buf := make([]byte, t.Length)//length sahi karno hai
 	donePieces := 0
 	for donePieces < len(t.PieceHashes) {
 		log.Println("bres")
 
-		var res *pieceResult
-		select {
-		case r := <-results:
-			res = r
-		case <-timeout:
-			if (runtime.NumGoroutine() - 1) == 0 {
-				log.Println("timeout")
-				err := fmt.Errorf("cannot download")
-				return nil, err
-			}
-			continue
-		}
-		// res := <-results
+		// var res *pieceResult
+		// select {
+		// case r := <-results:
+		// 	res = r
+		// case <-timeout:
+		// 	if (runtime.NumGoroutine() - 1) == 0 {
+		// 		log.Println("timeout")
+		// 		err := fmt.Errorf("cannot download")
+		// 		return nil, err
+		// 	}
+		// 	continue
+		// }
+		res := <-results
 		log.Println("ares")
 
-		begin, end := t.calculateBoundsForPiece(res.index)
+		begin, end := t.calculateBoundsForPiece(uint(res.index))
 		copy(buf[begin:end], res.buf)
 		donePieces++
 
 		percent := float64(donePieces) / float64(len(t.PieceHashes)) * 100
 		numWorkers := runtime.NumGoroutine() - 1
-		log.Printf("(%0.2f%%) Downloaded piece %d form %d peers\n", percent, res.index, numWorkers)
+		log.Printf("(%0.2f%%) Downloaded piece %d from %d peers\n", percent, res.index, numWorkers)
 	}
 	close(workQuene)
 	return buf, nil

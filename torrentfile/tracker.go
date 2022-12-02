@@ -2,6 +2,7 @@ package torrentfile
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
 	"log"
@@ -33,7 +34,7 @@ func (t *TorrentFile) buildTrackerURL(announceURL string, peerID [20]byte, port 
 		"uploaded":   []string{"0"},
 		"downloaded": []string{"0"},
 		"compact":    []string{"1"},
-		"left":       []string{strconv.Itoa(t.Length)},
+		"left":       []string{strconv.FormatUint(t.Length,10)},
 	}
 	base.RawQuery = params.Encode()
 	return base.String(), nil
@@ -77,51 +78,55 @@ func (t *TorrentFile) requestPeersHTTP(announceURL *url.URL, peerID [20]byte, po
 }
 
 func (t *TorrentFile) requestPeersUDP(announceURL *url.URL, peerID [20]byte, port uint16) ([]peers.Peer, error) {
-	serverAddr, err := net.ResolveUDPAddr("udp", announceURL.Host)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := net.DialUDP("udp", nil, serverAddr)
+	// serverAddr, err := net.ResolveUDPAddr("udp", announceURL.Host)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	log.Println(announceURL.Host)
+	conn, err := net.Dial("udp", announceURL.Host)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
 	var connID uint64
-	for retry := uint(0); retry < uint(8); retry++ {
-		err = conn.SetDeadline(time.Now().Add(15 * (1 << retry) * time.Second))
-		if err != nil {
-			return nil, err
-		}
-
-		connID, err = connectReqUDP(conn)
-		log.Println("faxxx")
-		if err != nil {
-			return nil, err
-		}
-
-		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-			continue
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-	}
-	log.Println("faxxx2")
-
-	peers, err := announceReqUDP(conn, connID, peerID, port, *t)
+	// for retry := uint(0); retry < uint(8); retry++ {
+	log.Println("yo")
+	err = conn.SetDeadline(time.Now().Add(4 * time.Second))
+	// err = conn.SetDeadline(time.Now().Add(15 * (1 << retry) * time.Second))
 	if err != nil {
 		return nil, err
 	}
-	log.Println("faxxx3")
+	connID, err = connectReqUDP(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	// if err == nil {
+	// 	log.Println("connect successful")
+
+	// 	break
+	// }
+
+	// }
+	var peers []peers.Peer
+	// for retry := uint(0); retry < uint(8); retry++ {
+	peers, err = announceReqUDP(conn, connID, peerID, port, *t)
+	// if err == nil {
+	// 	log.Println("announce successful")
+	// 	break
+	// }
+	if err != nil {
+		return nil, err
+	}
+
+	// }
 
 	return peers, nil
 
 }
 
-func connectReqUDP(conn *net.UDPConn) (uint64, error) {
+func connectReqUDP(conn net.Conn) (uint64, error) {
 
 	/*
 		connect request:
@@ -193,7 +198,7 @@ func buildConnectPacket() ([]byte, error) {
 	return packet, err
 }
 
-func announceReqUDP(conn *net.UDPConn, connectID uint64, peerID [20]byte, port uint16, t TorrentFile) ([]peers.Peer, error) {
+func announceReqUDP(conn net.Conn, connectID uint64, peerID [20]byte, port uint16, t TorrentFile) ([]peers.Peer, error) {
 	/*
 		IPv4 announce request:
 			Offset  Size    Name    Value
@@ -233,13 +238,11 @@ func announceReqUDP(conn *net.UDPConn, connectID uint64, peerID [20]byte, port u
 	if err != nil {
 		return nil, err
 	}
-	log.Println("faxxx4")
 
 	respBuffer := new(bytes.Buffer)
 	var respLen int
 	respBytes := make([]byte, 4096)
 	respLen, err = conn.Read(respBytes)
-	// log.Println(respBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -248,8 +251,10 @@ func announceReqUDP(conn *net.UDPConn, connectID uint64, peerID [20]byte, port u
 	if err != nil {
 		return nil, err
 	}
+	log.Println(respBuffer.Bytes())
 
-	if respLen < 20 {
+	log.Println(respLen)
+	if respLen <= 20 {
 		err = fmt.Errorf("unexpected response size")
 		return nil, err
 	}
@@ -274,6 +279,7 @@ func announceReqUDP(conn *net.UDPConn, connectID uint64, peerID [20]byte, port u
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("Seeders:%d",binary.BigEndian.Uint32(respBuffer.Bytes()[16:20]))
 
 	return peerList, nil
 }
@@ -300,6 +306,7 @@ func buildAnnouncePacket(connID uint64, peerID [20]byte, port uint16, t TorrentF
 	}
 
 	//transaction id
+	
 	err = binary.Write(announcePacket, binary.BigEndian, transactionID)
 	if err != nil {
 		return nil, err
@@ -312,7 +319,7 @@ func buildAnnouncePacket(connID uint64, peerID [20]byte, port uint16, t TorrentF
 	}
 
 	//peer id
-	err = binary.Write(announcePacket, binary.BigEndian, peerID)
+	err = binary.Write(announcePacket, binary.BigEndian, get_peer_id())
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +331,7 @@ func buildAnnouncePacket(connID uint64, peerID [20]byte, port uint16, t TorrentF
 	}
 
 	//left
-	err = binary.Write(announcePacket, binary.BigEndian, uint64(t.Length))
+	err = binary.Write(announcePacket, binary.BigEndian, uint64(0))
 	if err != nil {
 		return nil, err
 	}
@@ -365,5 +372,13 @@ func buildAnnouncePacket(connID uint64, peerID [20]byte, port uint16, t TorrentF
 		return nil, err
 	}
 
+log.Println(len(announcePacket.Bytes()))
 	return announcePacket.Bytes(), nil
+}
+
+func get_peer_id() [20]byte {
+	buf:=new(bytes.Buffer)
+	binary.Write(buf,binary.LittleEndian,time.Now().Unix())
+	return sha1.Sum(buf.Bytes())
+
 }
