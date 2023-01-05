@@ -119,6 +119,7 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 		PieceLength: t.PieceLength,
 		Length:      t.Length,
 		Name:        t.Name,
+		ConnectedPeers: 0,
 	}
 	buf, err := torrent.Download()
 	if err != nil {

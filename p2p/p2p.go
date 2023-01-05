@@ -5,7 +5,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"log"
-	"runtime"
+	"sync"
 	"time"
 
 	"github.com/aryanA101a/villi/client"
@@ -18,13 +18,14 @@ const MaxBlockSize = 16384
 const MaxBacklog = 5
 
 type Torrent struct {
-	Peers       []peers.Peer
-	PeerID      [20]byte
-	InfoHash    [20]byte
-	PieceHashes [][20]byte
-	PieceLength uint
-	Length      uint64
-	Name        string
+	Peers          []peers.Peer
+	PeerID         [20]byte
+	InfoHash       [20]byte
+	PieceHashes    [][20]byte
+	PieceLength    uint
+	Length         uint64
+	Name           string
+	ConnectedPeers int
 }
 
 type pieceWork struct {
@@ -122,20 +123,33 @@ func checkIntegrity(pw *pieceWork, buf []byte) error {
 	return nil
 }
 
-func (t *Torrent) startDownloadWorker(peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult) {
-	var c *client.Client
-	
-	
-		c, err := client.New(peer, t.PeerID, t.InfoHash)
-		if err != nil {
-			log.Println(err.Error())
-			log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
-			return
+func (t *Torrent) startDownloadWorker(connectedPeersLock *sync.Mutex, peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult) {
 
-		}
-	
-	
+	var c *client.Client
+
+	c, err := client.New(peer, t.PeerID, t.InfoHash)
+	if err != nil {
+		log.Println(err.Error())
+		log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
+
+		return
+
+	}
+
+	connectedPeersLock.Lock()
+	t.ConnectedPeers++
+	connectedPeersLock.Unlock()
+
 	defer c.Conn.Close()
+	defer func() {
+
+		connectedPeersLock.Lock()
+		if t.ConnectedPeers != 0 {
+			t.ConnectedPeers--
+		}
+		connectedPeersLock.Unlock()
+	}()
+
 	log.Printf("Completed handshake with %s\n", peer.IP)
 
 	c.SendUnchoke()
@@ -190,10 +204,10 @@ func (t *Torrent) Download() ([]byte, error) {
 		length := t.calculatePieceSize(uint(index))
 		workQuene <- &pieceWork{index, hash, length}
 	}
-
+	var connectedPeersLock sync.Mutex
 	log.Println(t.Peers)
 	for _, peer := range t.Peers {
-		go t.startDownloadWorker(peer, workQuene, results)
+		go t.startDownloadWorker(&connectedPeersLock, peer, workQuene, results)
 	}
 
 	buf := make([]byte, t.Length)
@@ -221,8 +235,7 @@ func (t *Torrent) Download() ([]byte, error) {
 		donePieces++
 
 		percent := float64(donePieces) / float64(len(t.PieceHashes)) * 100
-		numWorkers := runtime.NumGoroutine() - 1
-		log.Printf("(%0.2f%%) Downloaded piece %d from %d peers\n", percent, res.index, numWorkers)
+		log.Printf("(%0.2f%%) Downloaded piece %d from %d peers\n", percent, res.index,t.ConnectedPeers)
 	}
 	close(workQuene)
 	return buf, nil
