@@ -11,6 +11,7 @@ import (
 	"github.com/aryanA101a/villi/client"
 	"github.com/aryanA101a/villi/message"
 	"github.com/aryanA101a/villi/peers"
+	"github.com/aryanA101a/villi/ui"
 )
 
 const MaxBlockSize = 16384
@@ -234,8 +235,18 @@ func (t *Torrent) Download() ([]byte, error) {
 		copy(buf[begin:end], res.buf)
 		donePieces++
 
-		percent := float64(donePieces) / float64(len(t.PieceHashes)) * 100
-		log.Printf("(%0.2f%%) Downloaded piece %d from %d peers\n", percent, res.index,t.ConnectedPeers)
+		ratio := float64(donePieces) / float64(len(t.PieceHashes))
+		downloaded := uint64(donePieces) * uint64(t.PieceLength)
+		if donePieces == len(t.PieceHashes) {
+			downloaded = (downloaded - uint64(t.PieceLength)) + uint64(t.calculatePieceSize(uint(len(t.PieceHashes)-1)))
+		}
+		ui.UpdateUI(ui.Progress{
+			Ratio:      ratio,
+			Downloaded: downloaded,
+		})
+		ui.UpdateUI(ui.ConnectedPeers(t.ConnectedPeers))
+
+		log.Printf("(%0.2f%%) Downloaded piece %d from %d peers\n", ratio*100, res.index, t.ConnectedPeers)
 	}
 	close(workQuene)
 	return buf, nil

@@ -12,10 +12,12 @@ import (
 
 	"github.com/aryanA101a/villi/p2p"
 	"github.com/aryanA101a/villi/peers"
+	"github.com/aryanA101a/villi/ui"
 	bencode "github.com/zeebo/bencode"
 	"golang.org/x/exp/maps"
 )
-const Max_Peer int=30
+
+const Max_Peer int = 30
 
 // Port used for Bit-Torrent
 const Port uint16 = 6881
@@ -97,6 +99,7 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 
 	}
 	peerList = append(peerList, maps.Values(peerDict)...)
+	ui.UpdateUI(ui.Peers(len(peerList)))
 	log.Printf("Got %d peers", len(peerList))
 	log.Print("PeerList:")
 	log.Println(peerList)
@@ -112,20 +115,22 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 	// }
 
 	torrent := p2p.Torrent{
-		Peers:       peerList,
-		PeerID:      peerID,
-		InfoHash:    t.InfoHash,
-		PieceHashes: t.PieceHashes,
-		PieceLength: t.PieceLength,
-		Length:      t.Length,
-		Name:        t.Name,
+		Peers:          peerList,
+		PeerID:         peerID,
+		InfoHash:       t.InfoHash,
+		PieceHashes:    t.PieceHashes,
+		PieceLength:    t.PieceLength,
+		Length:         t.Length,
+		Name:           t.Name,
 		ConnectedPeers: 0,
 	}
+ui.UpdateUI(ui.Status("downloading..."))
+
 	buf, err := torrent.Download()
 	if err != nil {
 		return err
 	}
-
+ui.UpdateUI(ui.Status("writing file to disk..."))
 	offset := uint64(0)
 	for _, f := range t.Files {
 		_, err = f.FilePointer.Write(buf[offset:f.Length])
@@ -143,7 +148,7 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 
 }
 
-func Open(inPath string,outPath string) (TorrentFile, error) {
+func Open(inPath string, outPath string) (TorrentFile, error) {
 	file, err := os.Open(inPath)
 	if err != nil {
 
@@ -214,13 +219,13 @@ func (bto *bencodeTorrent) toTorrentFile(outPath string) (TorrentFile, error) {
 	if err != nil {
 		return TorrentFile{}, err
 	}
-	
+
 	if bencodeInfo.Length > 0 {
 		var filePointer *os.File
 		name := path.Join(outPath, bencodeInfo.Name)
 		filePointer, err = os.Create(name)
 		if err != nil {
-		log.Println(outPath)
+			log.Println(outPath)
 
 			return TorrentFile{}, err
 		}
@@ -235,9 +240,9 @@ func (bto *bencodeTorrent) toTorrentFile(outPath string) (TorrentFile, error) {
 
 	} else {
 		err = os.Mkdir(path.Join(outPath, bencodeInfo.Name), os.ModePerm)
-			if err != nil && os.IsNotExist(err) {
-				return TorrentFile{}, err
-			}
+		if err != nil && os.IsNotExist(err) {
+			return TorrentFile{}, err
+		}
 
 		bencodeInfoFiles := make([]*bencodeInfoFile, 0)
 		err = bencode.DecodeBytes(bencodeInfo.Files, &bencodeInfoFiles)
