@@ -4,16 +4,17 @@ This project aims to mimic the capabilities of a good torrent client using the o
 
 ## Features
 - `.torrent` file support
-- Fetching Peer lists from both **HTTP** and **UDP** Trackers.
-- Fetching pieces **concurrently** from Peers.
-- Simple command-line interface
+- **HTTP** and **UDP** Tracker Support
+- Terminal User Interface
 
 ## Usage
-1. **Downloading**  
-`go run main.go file.torrent output_dir -flag`
+1. **Examples**
+  `villi file.torrent /downloads/         Download file.torrent and save to /downloads/`
+  `villi file.torrent /downloads/ -v      Download file.torrent and save to /downloads/ with verbose logging`
 
 2. **Flags**
 
 | __Flag Name__ | __Flag__ | __Description__ | __Default__ |
 |-------------|------------|------------|------------|
-| Verbose | `-v or -V` | Detailed logs | false |
+| Verbose | `-v or --verbose` | Enable verbose logging | false |
+| Help | `-h or --help` | Show this help message and exit | false |
