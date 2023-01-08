@@ -12,6 +12,7 @@ import (
 	"github.com/aryanA101a/villi/message"
 	"github.com/aryanA101a/villi/peers"
 	"github.com/aryanA101a/villi/ui"
+	"github.com/aryanA101a/villi/utils"
 )
 
 const MaxBlockSize = 16384
@@ -124,14 +125,14 @@ func checkIntegrity(pw *pieceWork, buf []byte) error {
 	return nil
 }
 
-func (t *Torrent) startDownloadWorker(connectedPeersLock *sync.Mutex, peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult) {
+func (t *Torrent) startDownloadWorker(connectedPeersLock *sync.Mutex, peer peers.Peer, workQuene chan *pieceWork, results chan *pieceResult,timeout chan bool) {
 
 	var c *client.Client
 
 	c, err := client.New(peer, t.PeerID, t.InfoHash)
 	if err != nil {
-		log.Println(err.Error())
-		log.Printf("Could not handshake with %s. Disconnecting\n\n\n", peer.IP)
+		log.Print(utils.BoldRed("Could not handshake with ",peer.IP," Disconnecting", ))
+		log.Print(utils.BoldRed(err.Error()),"\n\n")
 
 		return
 
@@ -149,9 +150,13 @@ func (t *Torrent) startDownloadWorker(connectedPeersLock *sync.Mutex, peer peers
 			t.ConnectedPeers--
 		}
 		connectedPeersLock.Unlock()
+
+		if t.ConnectedPeers==0{
+			timeout<-true
+		}
 	}()
 
-	log.Printf("Completed handshake with %s\n", peer.IP)
+	log.Println(utils.Bold("Completed handshake with ",peer.IP ))
 
 	c.SendUnchoke()
 	c.SendInterested()
@@ -164,14 +169,14 @@ func (t *Torrent) startDownloadWorker(connectedPeersLock *sync.Mutex, peer peers
 
 		buf, err := attemptDownloadPiece(c, pw)
 		if err != nil {
-			log.Println("Existing", err)
+			log.Print(utils.BoldRed("Existing ", err),"\n\n")
 			workQuene <- pw
 			return
 		}
 
 		err = checkIntegrity(pw, buf)
 		if err != nil {
-			log.Printf("Piece #%d failed integrity check\n", pw.index)
+			log.Print(utils.BoldRed("Piece #", pw.index,"failed integrity check\n\n"))
 			workQuene <- pw
 			continue
 		}
@@ -197,39 +202,32 @@ func (t *Torrent) calculatePieceSize(index uint) int {
 }
 
 func (t *Torrent) Download() ([]byte, error) {
-	log.Println("Starting download for", t.Name)
+	log.Println(utils.Bold("Starting download for", t.Name))
 	// timeout := make(chan bool, 1)
 	workQuene := make(chan *pieceWork, len(t.PieceHashes))
 	results := make(chan *pieceResult)
+	timeout := make(chan bool)
+
 	for index, hash := range t.PieceHashes {
 		length := t.calculatePieceSize(uint(index))
 		workQuene <- &pieceWork{index, hash, length}
 	}
 	var connectedPeersLock sync.Mutex
-	log.Println(t.Peers)
 	for _, peer := range t.Peers {
-		go t.startDownloadWorker(&connectedPeersLock, peer, workQuene, results)
+		go t.startDownloadWorker(&connectedPeersLock, peer, workQuene, results,timeout)
 	}
 
 	buf := make([]byte, t.Length)
 	donePieces := 0
 	for donePieces < len(t.PieceHashes) {
-		log.Println("bres")
 
-		// var res *pieceResult
-		// select {
-		// case r := <-results:
-		// 	res = r
-		// case <-timeout:
-		// 	if (runtime.NumGoroutine() - 1) == 0 {
-		// 		log.Println("timeout")
-		// 		err := fmt.Errorf("cannot download")
-		// 		return nil, err
-		// 	}
-		// 	continue
-		// }
-		res := <-results
-		log.Println("ares")
+		var res *pieceResult
+		select {
+		case r := <-results:
+			res = r
+		case <-timeout:
+			return nil,fmt.Errorf("all peers disconnected")
+		}
 
 		begin, end := t.calculateBoundsForPiece(uint(res.index))
 		copy(buf[begin:end], res.buf)
@@ -246,7 +244,7 @@ func (t *Torrent) Download() ([]byte, error) {
 		})
 		ui.UpdateUI(ui.ConnectedPeers(t.ConnectedPeers))
 
-		log.Printf("(%0.2f%%) Downloaded piece %d from %d peers\n", ratio*100, res.index, t.ConnectedPeers)
+		log.Println(utils.Bold(fmt.Sprintf("(%0.2f%%) Downloaded piece %d from %d peers\n", ratio*100, res.index, t.ConnectedPeers)))
 	}
 	close(workQuene)
 	return buf, nil

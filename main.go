@@ -102,14 +102,15 @@ var inPath,outPath string
 func start(inPath string, outPath string) {
 	tf, err := torrentfile.Open(inPath, outPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(utils.BoldRed(err))
 	}
 	ui.UpdateUI(ui.FileName(tf.Name))
 	ui.UpdateUI(ui.Status("contacting peers..."))
 	ui.UpdateUI(ui.FileSize(utils.ConvertToHumanReadable(tf.Length)))
+
 	err = tf.DownloadToFile(outPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(utils.BoldRed(err))
 	}
 }
 

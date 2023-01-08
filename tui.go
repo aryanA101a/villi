@@ -16,7 +16,7 @@ import (
 var titleStyle=lipgloss.NewStyle().Background(lipgloss.Color("63")).Bold(true).Align(lipgloss.Center).Width(maxWidth+15).Render
 var borderStyle = lipgloss.NewStyle().
 	BorderStyle(lipgloss.RoundedBorder()).
-	BorderForeground(lipgloss.Color("63")).Render
+	BorderForeground(lipgloss.Color("63")).Margin(2).Render
 var downloadPercentageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true).Render
 var helpStyle = lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("#626262")).Render
 var metaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Align(lipgloss.Center).Width(maxWidth + 15).Render

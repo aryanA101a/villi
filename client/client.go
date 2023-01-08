@@ -111,11 +111,6 @@ func (c *Client) SendNotInterested() error {
 	return err
 }
 
-// func (c *Client) SendChoke() error {
-// 	msg := message.Message{ID: message.MsgChoke}
-// 	_, err := c.Conn.Write(msg.Serialize())
-// 	return err
-// }
 
 func (c *Client) SendUnchoke() error {
 	msg := message.Message{ID: message.MsgUnchoke}

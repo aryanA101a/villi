@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -78,11 +77,7 @@ func (t *TorrentFile) requestPeersHTTP(announceURL *url.URL, peerID [20]byte, po
 }
 
 func (t *TorrentFile) requestPeersUDP(announceURL *url.URL, peerID [20]byte, port uint16) ([]peers.Peer, error) {
-	// serverAddr, err := net.ResolveUDPAddr("udp", announceURL.Host)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	log.Println(announceURL.Host)
+	
 	conn, err := net.Dial("udp", announceURL.Host)
 	if err != nil {
 		return nil, err
@@ -90,10 +85,7 @@ func (t *TorrentFile) requestPeersUDP(announceURL *url.URL, peerID [20]byte, por
 	defer conn.Close()
 
 	var connID uint64
-	// for retry := uint(0); retry < uint(8); retry++ {
-	log.Println("yo")
 	err = conn.SetDeadline(time.Now().Add(4 * time.Second))
-	// err = conn.SetDeadline(time.Now().Add(15 * (1 << retry) * time.Second))
 	if err != nil {
 		return nil, err
 	}
@@ -102,25 +94,15 @@ func (t *TorrentFile) requestPeersUDP(announceURL *url.URL, peerID [20]byte, por
 		return nil, err
 	}
 
-	// if err == nil {
-	// 	log.Println("connect successful")
+	
 
-	// 	break
-	// }
-
-	// }
 	var peers []peers.Peer
-	// for retry := uint(0); retry < uint(8); retry++ {
 	peers, err = announceReqUDP(conn, connID, peerID, port, *t)
-	// if err == nil {
-	// 	log.Println("announce successful")
-	// 	break
-	// }
+	
 	if err != nil {
 		return nil, err
 	}
 
-	// }
 
 	return peers, nil
 
@@ -251,9 +233,7 @@ func announceReqUDP(conn net.Conn, connectID uint64, peerID [20]byte, port uint1
 	if err != nil {
 		return nil, err
 	}
-	log.Println(respBuffer.Bytes())
 
-	log.Println(respLen)
 	if respLen <= 20 {
 		err = fmt.Errorf("unexpected response size")
 		return nil, err
@@ -279,7 +259,6 @@ func announceReqUDP(conn net.Conn, connectID uint64, peerID [20]byte, port uint1
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Seeders:%d",binary.BigEndian.Uint32(respBuffer.Bytes()[16:20]))
 
 	return peerList, nil
 }
@@ -372,7 +351,6 @@ func buildAnnouncePacket(connID uint64, peerID [20]byte, port uint16, t TorrentF
 		return nil, err
 	}
 
-log.Println(len(announcePacket.Bytes()))
 	return announcePacket.Bytes(), nil
 }
 

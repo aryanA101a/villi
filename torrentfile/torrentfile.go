@@ -13,6 +13,7 @@ import (
 	"github.com/aryanA101a/villi/p2p"
 	"github.com/aryanA101a/villi/peers"
 	"github.com/aryanA101a/villi/ui"
+	"github.com/aryanA101a/villi/utils"
 	bencode "github.com/zeebo/bencode"
 	"golang.org/x/exp/maps"
 )
@@ -64,11 +65,6 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 	var peerList []peers.Peer
 	peerDict := make(map[string]peers.Peer)
 
-	// announceList := t.Announce
-	// rand.Seed(time.Now().Unix())
-	// rand.Shuffle(len(announceList), func(i, j int) {
-	// 	announceList[i], announceList[j] = announceList[j], announceList[i]
-	// })
 	for _, announceURL := range t.Announce {
 		if len(peerDict) >= Max_Peer {
 			break
@@ -78,41 +74,34 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 			continue
 		}
 
-		log.Println("Contacting tracker[", announceURL, "] for peer list...")
+		log.Println(utils.Bold("Contacting tracker[" + announceURL + "] for peer list..."))
 
 		var result []peers.Peer
 		result, err = t.requestPeers(u, peerID, Port)
 		if err != nil {
-			log.Println("Failed(", err, "). Trying again...")
+			log.Println(utils.BoldRed("Failed(", err, "). Trying again...\n"))
 			continue
 		}
 
-		log.Println("------------------")
-		log.Println(result)
+		log.Println(utils.Bold("Got: "), result)
 		for _, peer := range result {
 			if _, ok := peerDict[peer.String()]; !ok {
 				peerDict[peer.String()] = peer
 			}
 		}
-		log.Println(peerDict)
-		log.Println("------------------")
 
 	}
 	peerList = append(peerList, maps.Values(peerDict)...)
+
 	ui.UpdateUI(ui.Peers(len(peerList)))
-	log.Printf("Got %d peers", len(peerList))
-	log.Print("PeerList:")
-	log.Println(peerList)
+
+	log.Print("\n\n", utils.Bold("Got ", len(peerList), " peers"), "\n", utils.Bold("Final PeerList: "), peerList,"\n\n")
+
 	if peerList == nil {
-		// panic("Unable to receive peers! Problem with the torrent or internet")
 
 		return err
 
 	}
-	// := t.requestPeers(peerID, Port)
-	// if err != nil {
-	// return err
-	// }
 
 	torrent := p2p.Torrent{
 		Peers:          peerList,
@@ -124,13 +113,13 @@ func (t *TorrentFile) DownloadToFile(path string) error {
 		Name:           t.Name,
 		ConnectedPeers: 0,
 	}
-ui.UpdateUI(ui.Status("downloading..."))
+	ui.UpdateUI(ui.Status("downloading..."))
 
 	buf, err := torrent.Download()
 	if err != nil {
 		return err
 	}
-ui.UpdateUI(ui.Status("writing file to disk..."))
+	ui.UpdateUI(ui.Status("writing file to disk..."))
 	offset := uint64(0)
 	for _, f := range t.Files {
 		_, err = f.FilePointer.Write(buf[offset:f.Length])
@@ -170,17 +159,6 @@ func Open(inPath string, outPath string) (TorrentFile, error) {
 	return bto.toTorrentFile(outPath)
 }
 
-// func (i *bencodeInfo) hash() ([20]byte, error) {
-// 	var buf bytes.Buffer
-// 	err := bencode.Marshal(&buf, *i)
-// 	if err != nil {
-// 		return [20]byte{}, err
-// 	}
-// 	// log.Println(*i)
-// 	h := sha1.Sum(buf.Bytes())
-// 	return h, nil
-// }
-
 func (i *bencodeInfo) splitPiecesHashes() ([][20]byte, error) {
 	hashLen := 20 //Length of SHA1 hash
 	buf := []byte(i.Pieces)
@@ -201,7 +179,6 @@ func (bto *bencodeTorrent) toTorrentFile(outPath string) (TorrentFile, error) {
 
 	bencodeInfo := bencodeInfo{}
 	err := bencode.DecodeBytes(bto.Info, &bencodeInfo)
-	log.Println(bencodeInfo)
 	if err != nil {
 		return TorrentFile{}, err
 	}
@@ -225,11 +202,9 @@ func (bto *bencodeTorrent) toTorrentFile(outPath string) (TorrentFile, error) {
 		name := path.Join(outPath, bencodeInfo.Name)
 		filePointer, err = os.Create(name)
 		if err != nil {
-			log.Println(outPath)
 
 			return TorrentFile{}, err
 		}
-		log.Println("erssrur")
 
 		files = append(files, &file{
 			Path:        name,
