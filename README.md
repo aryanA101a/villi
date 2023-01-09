@@ -13,10 +13,13 @@ This project aims to mimic the capabilities of a good torrent client using the o
 - **HTTP** and **UDP** Tracker Support
 - Terminal User Interface
 
+## Build
+`go build`
+
 ## Usage
 1. **Examples**  
   `./villi file.torrent /downloads/         Download file.torrent and save to /downloads/`  
-  `./villi file.torrent /downloads/ -v      Download file.torrent and save to /downloads/ with verbose logging`
+  `./villi -flag file.torrent /downloads/      Download file.torrent and save to /downloads/ with verbose logging`
 
 2. **Flags**
 
