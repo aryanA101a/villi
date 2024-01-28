@@ -21,9 +21,13 @@ This project aims to mimic the capabilities of a good torrent client using the o
   `./villi file.torrent /downloads/         Download file.torrent and save to /downloads/`  
   `./villi -flag file.torrent /downloads/      Download file.torrent and save to /downloads/ with verbose logging`
 
-2. **Flags**
+3. **Flags**
 
 | __Flag Name__ | __Flag__ | __Description__ | __Default__ |
 |-------------|------------|------------|------------|
 | Verbose | `-v or --verbose` | Enable verbose logging | false |
 | Help | `-h or --help` | Show this help message and exit | false |
+
+## References
+1. https://blog.jse.li/posts/torrent/
+2. https://www.bittorrent.org/beps/bep_0000.html
